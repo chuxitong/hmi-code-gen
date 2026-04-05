@@ -96,15 +96,64 @@ python download_model.py
 
 ---
 
+## Воспроизводимость
+
+### Скрипт запуска тестов
+
+Все тесты можно воспроизвести одной командой:
+
+```bash
+python baseline-tests/run_baseline_tests.py
+```
+
+Скрипт последовательно выполняет:
+1. **Generation** — генерация кода из 3 скриншотов (Equipment Status, Alarm Screen, Operator Panel)
+2. **Refinement** — 2 итерации улучшения на Тесте 1
+3. **Editing** — редактирование по текстовой инструкции на Тесте 1
+
+Результаты (HTML, PNG, лог) сохраняются в `baseline-tests/outputs/`.
+
+### Использованные промпты
+
+**Тест 1 (Generation):**
+> Generate a complete single-file HTML page with inline CSS that reproduces this industrial equipment status dashboard. Use a dark background, colored status indicator dots, and card-based layout.
+
+**Тест 2 (Generation):**
+> Generate a complete single-file HTML page with inline CSS that reproduces this alarm and event monitoring screen. Include a summary bar with severity counts, tab navigation, and a data table with severity badges, timestamps, descriptions, and acknowledge buttons.
+
+**Тест 3 (Generation):**
+> Generate a complete single-file HTML page with inline CSS that reproduces this operator control panel. Include start/stop/reset buttons, operating mode selector (Auto/Manual/Service), setpoint input fields, and live readout displays.
+
+**Refinement:**
+> Compare the rendered code screenshot with the original reference image. Improve spacing, font size hierarchy, status indicator styling, and card proportions to make the output closer to the reference mockup.
+
+**Editing:**
+> Make the warning card border thicker and add a pulsing animation to the fault status indicator.
+
+Все промпты также сохранены в файле `baseline-tests/outputs/prompts.json`.
+
+---
+
 ## Приложение: файлы交付物
 
 | # | 交付物 | Расположение в репозитории |
 |---|--------|---------------------------|
 | 1 | Полный отчёт по оценке базовой модели | `baseline-tests/baseline-report.md` |
-| 2 | Тест 1 — вывод модели | `baseline-tests/outputs/test1-generated.png` |
-| 3 | Тест 2 — вывод модели | `baseline-tests/outputs/test2-generated.png` |
-| 4 | Тест 3 — вывод модели | `baseline-tests/outputs/test3-generated.png` |
-| 5 | Тест 1 — после 2-й итерации улучшения | `baseline-tests/outputs/test1-refined-iter2.png` |
-| 6 | Тест 1 — сравнение: референс / вывод / улучшение | `baseline-tests/outputs/test1-comparison.png` |
-| 7 | Тест 2 — сравнение: референс / вывод | `baseline-tests/outputs/test2-comparison.png` |
-| 8 | Тест 3 — сравнение: референс / вывод | `baseline-tests/outputs/test3-comparison.png` |
+| 2 | **Скрипт запуска тестов** | `baseline-tests/run_baseline_tests.py` |
+| 3 | **Промпты (JSON)** | `baseline-tests/outputs/prompts.json` |
+| 4 | **Лог выполнения** | `baseline-tests/outputs/test-run.log` |
+| 5 | **Сводка результатов** | `baseline-tests/outputs/results-summary.json` |
+| 6 | Тест 1 — сгенерированный HTML | `baseline-tests/outputs/test1-generated.html` |
+| 7 | Тест 2 — сгенерированный HTML | `baseline-tests/outputs/test2-generated.html` |
+| 8 | Тест 3 — сгенерированный HTML | `baseline-tests/outputs/test3-generated.html` |
+| 9 | Тест 1 — скриншот вывода модели | `baseline-tests/outputs/test1-generated.png` |
+| 10 | Тест 2 — скриншот вывода модели | `baseline-tests/outputs/test2-generated.png` |
+| 11 | Тест 3 — скриншот вывода модели | `baseline-tests/outputs/test3-generated.png` |
+| 12 | Тест 1 — HTML после итерации 1 | `baseline-tests/outputs/test1-refined-iter1.html` |
+| 13 | Тест 1 — HTML после итерации 2 | `baseline-tests/outputs/test1-refined-iter2.html` |
+| 14 | Тест 1 — скриншот после итерации 2 | `baseline-tests/outputs/test1-refined-iter2.png` |
+| 15 | Тест 1 — HTML после редактирования | `baseline-tests/outputs/test1-edited.html` |
+| 16 | Тест 1 — скриншот после редактирования | `baseline-tests/outputs/test1-edited.png` |
+| 17 | Тест 1 — сравнение: референс / вывод / улучшение | `baseline-tests/outputs/test1-comparison.png` |
+| 18 | Тест 2 — сравнение: референс / вывод | `baseline-tests/outputs/test2-comparison.png` |
+| 19 | Тест 3 — сравнение: референс / вывод | `baseline-tests/outputs/test3-comparison.png` |
