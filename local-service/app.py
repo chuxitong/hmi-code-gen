@@ -91,6 +91,8 @@ class GenerateRequest(BaseModel):
 class RefineRequest(BaseModel):
     reference_image_base64: str
     current_code: str
+    width: int = 1280
+    height: int = 720
     css_hints: Optional[dict] = None
     variables: Optional[dict] = None
 
@@ -98,6 +100,8 @@ class RefineRequest(BaseModel):
 class EditRequest(BaseModel):
     current_code: str
     instruction: str
+    width: int = 1280
+    height: int = 720
 
 
 class RenderRequest(BaseModel):
@@ -163,7 +167,7 @@ async def refine(req: RefineRequest):
 
     preview_b64 = None
     try:
-        preview_bytes = await render_html_to_png(code)
+        preview_bytes = await render_html_to_png(code, req.width, req.height)
         preview_b64 = base64.b64encode(preview_bytes).decode()
     except Exception as e:
         logger.warning(f"Preview rendering failed: {e}")
@@ -183,7 +187,7 @@ async def edit(req: EditRequest):
 
     preview_b64 = None
     try:
-        preview_bytes = await render_html_to_png(code)
+        preview_bytes = await render_html_to_png(code, req.width, req.height)
         preview_b64 = base64.b64encode(preview_bytes).decode()
     except Exception as e:
         logger.warning(f"Preview rendering failed: {e}")

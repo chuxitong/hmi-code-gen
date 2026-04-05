@@ -51,8 +51,22 @@ figma.ui.onmessage = async (msg: { type: string; payload?: any }) => {
             if (collection && collection.modes.length > 0) {
               const modeId = collection.modes[0].modeId;
               const val = v.valuesByMode[modeId];
-              if (typeof val === "string" || typeof val === "number") {
-                variables[`--${v.name.replace(/\//g, "-")}`] = String(val);
+              const key = `--${v.name.replace(/\//g, "-")}`;
+
+              if (typeof val === "string") {
+                variables[key] = val;
+              } else if (typeof val === "number") {
+                variables[key] = String(val);
+              } else if (typeof val === "object" && val !== null && "r" in val) {
+                const c = val as { r: number; g: number; b: number; a: number };
+                const r = Math.round(c.r * 255);
+                const g = Math.round(c.g * 255);
+                const b = Math.round(c.b * 255);
+                if (c.a < 1) {
+                  variables[key] = `rgba(${r}, ${g}, ${b}, ${parseFloat(c.a.toFixed(2))})`;
+                } else {
+                  variables[key] = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+                }
               }
             }
           }
