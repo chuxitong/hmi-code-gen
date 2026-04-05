@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body>
+<script>
+const BASE_URL = "http://localhost:8888";
+const MOCKUPS = [
+  { file: "01-equipment-status.png", name: "01 - Equipment Status Dashboard" },
+  { file: "02-alarm-event.png",      name: "02 - Alarm & Event Screen" },
+  { file: "03-trend-monitor.png",    name: "03 - Real-Time Trend Monitor" },
+  { file: "04-operator-panel.png",   name: "04 - Operator Control Panel" },
+  { file: "05-production-overview.png", name: "05 - Production Line Overview" },
+  { file: "06-tank-synoptic.png",    name: "06 - Tank Farm Synoptic" },
+  { file: "07-energy-dashboard.png", name: "07 - Energy Monitoring Dashboard" },
+  { file: "08-batch-recipe.png",     name: "08 - Batch Recipe Management" },
+];
+
+async function fetchAll() {
+  for (let i = 0; i < MOCKUPS.length; i++) {
+    const m = MOCKUPS[i];
+    try {
+      const resp = await fetch(`${BASE_URL}/${m.file}`);
+      const buf = await resp.arrayBuffer();
+      parent.postMessage({
+        pluginMessage: {
+          type: "image-data",
+          name: m.name,
+          bytes: new Uint8Array(buf),
+          index: i,
+          total: MOCKUPS.length,
+        }
+      }, "*");
+    } catch (e) {
+      parent.postMessage({
+        pluginMessage: { type: "error", name: m.name, message: e.message }
+      }, "*");
+    }
+  }
+  parent.postMessage({ pluginMessage: { type: "done" } }, "*");
+}
+
+fetchAll();
+</script>
+</body>
+</html>

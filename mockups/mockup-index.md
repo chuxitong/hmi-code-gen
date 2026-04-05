@@ -1,5 +1,7 @@
 # Industrial HMI Mockup Set
 
+**Figma file:** [Industrial HMI Mockups](https://www.figma.com/design/pfFNMVzjfLbeCo6r2ieFl3)
+
 ## Sources
 
 ### Editable Figma Templates Used as Base Layouts

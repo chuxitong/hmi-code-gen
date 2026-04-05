@@ -59,14 +59,15 @@
 
 ## Приложение: файлы交付物
 
-| # | 交付物 | Расположение в репозитории |
-|---|--------|---------------------------|
-| 1 | Описание набора макетов (таблица) | `mockups/mockup-index.md` |
-| 2 | Equipment Status Dashboard | `mockups/png/01-equipment-status.png` |
-| 3 | Alarm & Event Screen | `mockups/png/02-alarm-event.png` |
-| 4 | Real-Time Trend Monitor | `mockups/png/03-trend-monitor.png` |
-| 5 | Operator Control Panel | `mockups/png/04-operator-panel.png` |
-| 6 | Production Line Overview | `mockups/png/05-production-overview.png` |
-| 7 | Tank Farm Synoptic | `mockups/png/06-tank-synoptic.png` |
-| 8 | Energy Monitoring Dashboard | `mockups/png/07-energy-dashboard.png` |
-| 9 | Batch Recipe Management | `mockups/png/08-batch-recipe.png` |
+| # | 交付物 | Расположение |
+|---|--------|-------------|
+| 1 | **Figma файл** | [Industrial HMI Mockups](https://www.figma.com/design/pfFNMVzjfLbeCo6r2ieFl3) |
+| 2 | Описание набора макетов (таблица) | `mockups/mockup-index.md` |
+| 3 | Equipment Status Dashboard | `mockups/png/01-equipment-status.png` |
+| 4 | Alarm & Event Screen | `mockups/png/02-alarm-event.png` |
+| 5 | Real-Time Trend Monitor | `mockups/png/03-trend-monitor.png` |
+| 6 | Operator Control Panel | `mockups/png/04-operator-panel.png` |
+| 7 | Production Line Overview | `mockups/png/05-production-overview.png` |
+| 8 | Tank Farm Synoptic | `mockups/png/06-tank-synoptic.png` |
+| 9 | Energy Monitoring Dashboard | `mockups/png/07-energy-dashboard.png` |
+| 10 | Batch Recipe Management | `mockups/png/08-batch-recipe.png` |

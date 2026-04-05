@@ -1,0 +1,15 @@
+{
+  "name": "HMI Mockup Importer",
+  "id": "hmi-mockup-importer",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "devAllowedDomains": ["http://localhost:8888"],
+    "reasoning": "Fetches mockup PNGs from a local development server for import."
+  }
+}
