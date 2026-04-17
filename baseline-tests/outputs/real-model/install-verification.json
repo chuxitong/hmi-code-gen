@@ -1,0 +1,20 @@
+{
+  "torch": "2.4.1+cu124",
+  "cuda_available": true,
+  "cuda_device_name": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "cuda_capability": [
+    8,
+    6
+  ],
+  "cuda_total_vram_gb": 6.0,
+  "weight_dir_exists": true,
+  "shard_count": 4,
+  "shard_total_gb": 19.17,
+  "processor_class": "Glm4vProcessor",
+  "tokenizer_vocab_size": 151329,
+  "model_type": "glm4v",
+  "architectures": [
+    "Glm4vForConditionalGeneration"
+  ],
+  "total_parameters_declared": 20585554944
+}

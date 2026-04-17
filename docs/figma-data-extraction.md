@@ -1,139 +1,40 @@
-# Technical Note: Figma Data Extraction for HMI Code Generation
+# Какие данные я вытаскиваю из Figma
 
-## 1. Overview
+Этот файл объясняет, что именно и зачем мой плагин забирает из документа Figma и как это уходит на внешний сервис. Разделение простое: есть вещи, без которых сценарий вообще не работает, и есть вещи, которые только помогают модели сделать результат лучше.
 
-This document describes which data can be extracted from a Figma document through the Plugin API and how it will be passed to the external AI service. Data is categorized as **mandatory** (required for basic functionality) or **optional** (enhances generation quality).
+## Обязательные данные
 
-## 2. Mandatory Data
+Первое и главное — растровый экспорт выбранного фрейма. Получаю его через `node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } })`, на выходе `Uint8Array` с PNG-байтами. Двукратный масштаб беру не случайно: модель тогда уверенно читает текст подписей и мелкие элементы. Байты кодирую в base64 и передаю в тело HTTP-запроса к сервису.
 
-### 2.1 Selected Frame Export (PNG)
+Второе — метаданные выделенного узла. Имя фрейма (`node.name`) нужно как заголовок страницы и идентификатор, ширина и высота (`node.width`, `node.height`) — чтобы задать viewport при рендере, фон (`node.backgrounds`) — как ориентир цвета фона страницы.
 
-The primary input to the model is a rasterized screenshot of the selected frame.
+Третье — обмен сообщениями между песочницей плагина и его UI. Из песочницы в UI шлю через `figma.ui.postMessage(data)`, обратно — через `parent.postMessage({ pluginMessage: data }, '*')`. Песочница собирает данные из документа, UI делает `fetch` к локальному сервису. Плагин без этого не работает в принципе.
 
-- **API method:** `node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } })`
-- **Returns:** `Uint8Array` (PNG bytes)
-- **Usage:** Sent as a base64-encoded image in the request body to the local service.
-- **Notes:** Scale factor of 2 ensures sufficient resolution for the model to read text labels and fine UI details.
+## Опциональные данные
 
-### 2.2 Frame Metadata
+Когда пользователь включает галку «Include design variables», плагин запрашивает локальные переменные через `figma.variables.getLocalVariablesAsync()` и резолвит их значения по активному режиму через `figma.variables.getVariableCollectionByIdAsync(id)`. На выходе я получаю цветовые токены (например, `--color-primary: #1A73E8`), токены отступов (`--spacing-md: 16px`), типографики (`--font-size-h1: 24px`), радиусы, и отправляю всё как словарь CSS custom properties. Этот канал обычно сильнее всего подтягивает палитру и spacing под корпоративный стиль и не ломает структуру модели.
 
-Basic properties of the selected frame are needed to set the correct viewport for code generation.
+Когда включена галка «Include CSS hints», плагин запрашивает `node.getCSSAsync()` по выделенному фрейму и его ближайшим детям (ограничено десятью элементами, чтобы запрос не раздувался). Результат — словарь CSS-свойств, который Figma отдаёт как подсказку в панели Inspect. Этот канал полезнее всего на сложных экранах, где модели помогает удержать сетку и вертикальный ритм. На простых экранах CSS-подсказки можно не включать.
 
-| Property | API | Purpose |
-|----------|-----|---------|
-| Frame name | `node.name` | Used as page title / component identifier |
-| Width | `node.width` | Sets the HTML viewport width |
-| Height | `node.height` | Sets the HTML viewport height |
-| Background | `node.backgrounds` | Sets the body/container background color |
+Ещё один опциональный источник — облегчённое дерево узлов. Рекурсивно обхожу `node.children` на глубину 2–3 уровня, собираю имена, типы и координаты. Это помогает модели ориентироваться в иерархии, но для 99% случаев переменных и CSS-подсказок уже хватает.
 
-### 2.3 Message Passing Between Plugin Logic and UI
-
-Communication between the plugin sandbox (`code.ts`) and the plugin UI (`ui.html`) is essential for the workflow.
-
-- **Sandbox → UI:** `figma.ui.postMessage(data)`
-- **UI → Sandbox:** `parent.postMessage({ pluginMessage: data }, '*')`
-- **Usage:** The sandbox extracts design data and sends it to the UI; the UI forwards it to the local service via `fetch()`.
-
-## 3. Optional Data (Quality Enhancers)
-
-### 3.1 Design Variables
-
-Figma design variables (tokens) provide semantic information about the design system: colors, spacing, typography scales, border radii, etc.
-
-- **API method:** `figma.variables.getLocalVariablesAsync()` and `figma.variables.getVariableCollectionByIdAsync(id)`
-- **Returns:** Variable collections with names, types, and resolved values.
-- **Extracted information:**
-  - Color tokens (e.g., `--color-primary: #1A73E8`)
-  - Spacing tokens (e.g., `--spacing-md: 16px`)
-  - Typography tokens (e.g., `--font-size-h1: 24px`)
-- **Passed to service as:** A JSON dictionary of CSS custom properties.
-
-```json
-{
-  "variables": {
-    "--color-primary": "#1A73E8",
-    "--color-danger": "#D32F2F",
-    "--color-background": "#1E1E2E",
-    "--spacing-sm": "8px",
-    "--spacing-md": "16px",
-    "--font-size-body": "14px",
-    "--font-size-h1": "24px",
-    "--border-radius": "4px"
-  }
-}
-```
-
-### 3.2 CSS Hints
-
-The `getCSSAsync()` method returns Inspect-panel-like CSS snippets for a given node.
-
-- **API method:** `node.getCSSAsync()`
-- **Returns:** A dictionary of CSS property-value pairs.
-- **Usage:** Collected for key elements (direct children of the selected frame or user-selected sub-elements).
-- **Passed to service as:** An array of CSS hint objects.
-
-```json
-{
-  "css_hints": [
-    {
-      "node_name": "StatusCard",
-      "css": {
-        "width": "280px",
-        "height": "160px",
-        "background": "#2A2A3E",
-        "border-radius": "8px",
-        "padding": "16px"
-      }
-    }
-  ]
-}
-```
-
-### 3.3 Node Tree Structure (Lightweight)
-
-A simplified tree of the selected frame's children can provide layout context.
-
-- **Extracted from:** Recursive traversal of `node.children`
-- **Collected properties:** `name`, `type`, `x`, `y`, `width`, `height`
-- **Depth limit:** 2–3 levels to keep the payload manageable.
-
-## 4. Data Flow Architecture
+## Поток данных на одной картинке
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Figma Desktop                      │
-│                                                      │
-│  ┌──────────────┐   postMessage   ┌───────────────┐ │
-│  │   code.ts    │ ──────────────► │    ui.html    │ │
-│  │  (sandbox)   │ ◄────────────── │   (iframe)    │ │
-│  │              │   postMessage   │               │ │
-│  │ • exportPNG  │                 │ • fetch()     │ │
-│  │ • getVars    │                 │ • display     │ │
-│  │ • getCSS     │                 │ • user input  │ │
-│  └──────────────┘                 └───────┬───────┘ │
-│                                           │         │
-└───────────────────────────────────────────┼─────────┘
-                                            │ HTTP
-                                            ▼
-                                 ┌─────────────────────┐
-                                 │    Local Service     │
-                                 │  (localhost:8000)    │
-                                 │                      │
-                                 │ • /generate          │
-                                 │ • /refine            │
-                                 │ • /edit              │
-                                 │ • /render            │
-                                 └─────────────────────┘
+┌────────────────────── Figma Desktop ──────────────────────┐
+│                                                            │
+│   code.ts (sandbox)   postMessage   ui.html (iframe)       │
+│   ─ exportAsync                     ─ fetch()              │
+│   ─ variables     ───────────────►  ─ отображение кода     │
+│   ─ getCSSAsync  ◄───────────────   ─ ввод инструкций      │
+│                                                            │
+└────────────────────────────────────┬──────────────────────┘
+                                      │ HTTP
+                                      ▼
+                              localhost:8000
+                              /generate /refine /edit /render
 ```
 
-## 5. Summary Table
+## Коротко
 
-| Data | Mandatory | Optional | API Method |
-|------|:---------:|:--------:|------------|
-| Frame PNG screenshot | ✅ | | `exportAsync()` |
-| Frame dimensions | ✅ | | `node.width`, `node.height` |
-| Frame name | ✅ | | `node.name` |
-| Message passing | ✅ | | `postMessage` |
-| Design variables | | ✅ | `figma.variables.*` |
-| CSS hints | | ✅ | `getCSSAsync()` |
-| Node tree structure | | ✅ | `node.children` traversal |
+Из обязательного плагин берёт PNG фрейма, его размеры и имя, а также поддерживает обмен сообщениями песочница↔UI. Из опционального — переменные дизайна и CSS-подсказки, плюс при желании облегчённое дерево узлов. Оба опциональных канала управляются галками в UI плагина, чтобы оператор сам решал, насколько «нагружать» модель контекстом.

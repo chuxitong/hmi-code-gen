@@ -1,188 +1,99 @@
-# Local Service API Reference
+# API локального сервиса
 
-**Base URL:** `http://localhost:8000`
+Base URL: `http://localhost:8000`. Сервис поднимается из `local-service/app.py` через uvicorn. Поверх всех эндпоинтов включён CORS, чтобы плагин Figma ходил без боли. Ниже описание каждого эндпоинта с телом запроса, телом ответа и примерами вызова.
 
-## Endpoints
+## POST `/generate`
 
-### POST `/generate`
+Отдаёт HTML/CSS-код для поданного скриншота фрейма. На вход принимает base64-изображение, имя фрейма, желаемые ширину и высоту рендера (по умолчанию 1280×720) и два опциональных поля с контекстом — `css_hints` и `variables`. Имя фрейма используется как заголовок документа, ширина и высота — для viewport при рендере превью.
 
-Generate HTML/CSS code from a UI screenshot.
-
-**Request Body:**
+Пример запроса:
 
 ```json
 {
-  "image_base64": "<base64-encoded PNG>",
+  "image_base64": "<base64-PNG>",
   "frame_name": "Equipment Status Dashboard",
   "width": 1280,
   "height": 720,
   "css_hints": {
-    "StatusCard": {
-      "width": "280px",
-      "background": "#2a2a3e",
-      "border-radius": "8px"
-    }
+    "StatusCard": { "width": "280px", "background": "#2a2a3e", "border-radius": "8px" }
   },
   "variables": {
     "--color-primary": "#1A73E8",
-    "--color-danger": "#D32F2F",
     "--spacing-md": "16px"
   }
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `image_base64` | string | Yes | Base64-encoded PNG screenshot of the Figma frame |
-| `frame_name` | string | No | Name of the frame (used as page title) |
-| `width` | int | No | Frame width in px (default: 1280) |
-| `height` | int | No | Frame height in px (default: 720) |
-| `css_hints` | object | No | CSS hints from Figma Inspect for key elements |
-| `variables` | object | No | Figma design variables as CSS custom properties |
+Ответ всегда имеет три поля: `code` — сам HTML/CSS, `preview_base64` — PNG-рендер сгенерированной страницы (или `null`, если рендер не удался), `explanation` — короткое текстовое пояснение.
 
-**Response:**
+## POST `/refine`
+
+Итеративно улучшает уже сгенерированный код так, чтобы он был ближе к оригиналу. На вход подаётся референс-изображение (`reference_image_base64`) и текущий код (`current_code`). По желанию — тот же опциональный контекст (`css_hints`, `variables`).
+
+Пример запроса:
 
 ```json
 {
-  "code": "<!DOCTYPE html>\n<html>...</html>",
-  "preview_base64": "<base64-encoded PNG of rendered result>",
-  "explanation": "Initial code generated from screenshot."
-}
-```
-
----
-
-### POST `/refine`
-
-Iteratively improve generated code to better match the original mockup.
-
-**Request Body:**
-
-```json
-{
-  "reference_image_base64": "<base64-encoded original Figma screenshot>",
-  "current_code": "<!DOCTYPE html>\n<html>...</html>",
+  "reference_image_base64": "<base64-PNG>",
+  "current_code": "<!DOCTYPE html>...",
   "css_hints": {},
   "variables": {}
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `reference_image_base64` | string | Yes | Base64-encoded PNG of the original Figma frame |
-| `current_code` | string | Yes | The current HTML/CSS code to refine |
-| `css_hints` | object | No | CSS hints from Figma |
-| `variables` | object | No | Figma design variables |
+Ответ той же формы, что и у `/generate`.
 
-**Response:** Same format as `/generate`.
+## POST `/edit`
 
----
+Применяет короткую инструкцию на естественном языке к текущему коду. Типовые инструкции: «сделай кнопку вторичной», «увеличь заголовок», «выдели блок аварий поярче».
 
-### POST `/edit`
-
-Modify existing code based on a natural-language instruction.
-
-**Request Body:**
+Пример запроса:
 
 ```json
 {
-  "current_code": "<!DOCTYPE html>\n<html>...</html>",
-  "instruction": "Make the alarm block more prominent"
+  "current_code": "<!DOCTYPE html>...",
+  "instruction": "Выдели блок аварий поярче"
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `current_code` | string | Yes | The current HTML/CSS code to modify |
-| `instruction` | string | Yes | Natural-language edit instruction |
+Ответ той же формы, что и у `/generate`.
 
-**Response:** Same format as `/generate`.
+## POST `/render`
 
----
-
-### POST `/render`
-
-Render HTML code to a PNG image (utility endpoint).
-
-**Request Body:**
+Служебный эндпоинт. Принимает HTML-код и viewport, возвращает PNG. Используется и внутри сервиса (для формирования `preview_base64` в других ответах), и извне — экспериментальными скриптами, чтобы рендерить любой HTML в PNG одинаковым способом.
 
 ```json
 {
-  "html_code": "<!DOCTYPE html>\n<html>...</html>",
+  "html_code": "<!DOCTYPE html>...",
   "width": 1280,
   "height": 720
 }
 ```
 
-**Response:**
+Ответ: `{ "image_base64": "<base64-PNG>" }`.
 
-```json
-{
-  "image_base64": "<base64-encoded PNG>"
-}
-```
+## GET `/health`
 
----
+Обычный health-check: `{ "status": "ok", "model_loaded": true }`. Полезен, чтобы плагин или скрипт проверил, что сервис поднялся и модель действительно загружена.
 
-### GET `/health`
+## Пример вызова через curl
 
-Health check.
-
-**Response:**
-
-```json
-{
-  "status": "ok",
-  "model_loaded": true
-}
-```
-
-## Demo Request / Response
-
-### Demo: Generate Code
-
-**Request:**
+Генерация:
 
 ```bash
 curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
-  -d '{
-    "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-    "frame_name": "Equipment Status Dashboard",
-    "width": 1280,
-    "height": 720
-  }'
+  -d '{"image_base64": "iVBORw0...", "frame_name": "Equipment Status Dashboard"}'
 ```
 
-**Response:**
-
-```json
-{
-  "code": "<!DOCTYPE html>\n<html><head><style>\n  body { background: #1e1e2e; color: #e0e0e0; font-family: sans-serif; padding: 24px; }\n  .card { background: #2a2a3e; border-radius: 8px; padding: 16px; margin: 8px; display: inline-block; width: 200px; }\n  .status { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }\n  .ok { background: #4caf50; }\n  .warn { background: #ff9800; }\n</style></head><body>\n<h2>Equipment Status</h2>\n<div class=\"card\"><span class=\"status ok\"></span>Pump A — Running</div>\n<div class=\"card\"><span class=\"status warn\"></span>Pump B — Warning</div>\n</body></html>",
-  "preview_base64": "iVBORw0KGgoAAAANSUhEUg...",
-  "explanation": "Initial code generated from screenshot."
-}
-```
-
-### Demo: Edit by Request
-
-**Request:**
+Правка по запросу:
 
 ```bash
 curl -X POST http://localhost:8000/edit \
   -H "Content-Type: application/json" \
-  -d '{
-    "current_code": "<!DOCTYPE html><html><head><style>body{background:#1e1e2e;color:#e0e0e0;}.card{background:#2a2a3e;border-radius:8px;padding:16px;margin:8px;}</style></head><body><div class=\"card\">Pump A</div></body></html>",
-    "instruction": "Make the card background lighter and add a green left border"
-  }'
+  -d '{"current_code": "<!DOCTYPE html>...", "instruction": "Make the card background lighter"}'
 ```
 
-**Response:**
+## Про модель внутри сервиса
 
-```json
-{
-  "code": "<!DOCTYPE html><html><head><style>body{background:#1e1e2e;color:#e0e0e0;}.card{background:#3a3a4e;border-radius:8px;padding:16px;margin:8px;border-left:4px solid #4caf50;}</style></head><body><div class=\"card\">Pump A</div></body></html>",
-  "preview_base64": "iVBORw0KGgoAAAANSUhEUg...",
-  "explanation": "Edit applied: \"Make the card background lighter and add a green left border\""
-}
-```
+Сервис лениво грузит модель при первом запросе. Он сначала пробует импортировать `model_wrapper.UI2CodeModel` (настоящая UI2Code^N), и если что-то не получилось (например, нет весов или нет GPU), откатывается на детерминированный заместитель `rule_based_model.RuleBasedModel`. Обе модели предоставляют один и тот же интерфейс `generate`/`refine`/`edit`, поэтому остальной код ничего об этом не знает.

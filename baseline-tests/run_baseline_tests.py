@@ -10,8 +10,8 @@ This script runs 3 generation tests + 1 refinement test and saves:
 - Comparison images (reference vs generated)
 - Full execution log
 
-When the real model is not available, a stub model is used to demonstrate
-the pipeline. Replace StubModel with UI2CodeModel for real evaluation.
+When the real model is not available, the rule-based stand-in is used;
+set USE_REAL_MODEL=1 for UI2Code^N (see DEPLOYMENT.md).
 """
 
 import asyncio
@@ -78,25 +78,39 @@ PROMPTS = {
 
 
 async def run_tests():
-    from renderer import render_html_to_png
+    from renderer import shutdown_renderer
 
     base_dir = os.path.join(os.path.dirname(__file__), "..")
     out_dir = os.path.join(os.path.dirname(__file__), "outputs")
+
+    try:
+        await _run_tests_body(base_dir, out_dir, logger)
+    finally:
+        await shutdown_renderer()
+
+
+async def _run_tests_body(base_dir, out_dir, logger):
+    from renderer import render_html_to_png
 
     logger.info("=" * 60)
     logger.info("UI2Code^N Baseline Test Run")
     logger.info(f"Started at: {datetime.now().isoformat()}")
     logger.info("=" * 60)
 
-    try:
-        from model_wrapper import UI2CodeModel
-        model = UI2CodeModel()
-        logger.info("Loaded real UI2Code^N model.")
-    except ImportError:
-        logger.warning("model_wrapper not found — using StubModel for pipeline demo.")
-        sys.path.insert(0, os.path.join(base_dir, "local-service"))
-        from app import StubModel
-        model = StubModel()
+    sys.path.insert(0, os.path.join(base_dir, "local-service"))
+    if os.environ.get("USE_REAL_MODEL") == "1":
+        try:
+            from model_wrapper import UI2CodeModel
+            model = UI2CodeModel()
+            logger.info("Loaded real UI2Code^N model.")
+        except Exception as exc:
+            logger.warning("Real model load failed (%s); falling back to stand-in.", exc)
+            from rule_based_model import RuleBasedModel
+            model = RuleBasedModel()
+    else:
+        from rule_based_model import RuleBasedModel
+        model = RuleBasedModel()
+        logger.info("Using rule-based stand-in model (set USE_REAL_MODEL=1 for real).")
 
     results_summary = []
 

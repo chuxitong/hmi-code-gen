@@ -49,3 +49,20 @@ async def render_html_to_png(
         os.unlink(tmp.name)
 
     return png_bytes
+
+
+async def shutdown_renderer() -> None:
+    """Close Playwright browser to avoid asyncio teardown warnings on Windows."""
+    global _browser, _playwright
+    if _browser is not None:
+        try:
+            await _browser.close()
+        except Exception:
+            pass
+        _browser = None
+    if _playwright is not None:
+        try:
+            await _playwright.stop()
+        except Exception:
+            pass
+        _playwright = None

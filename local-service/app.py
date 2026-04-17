@@ -1,5 +1,5 @@
 """
-Local AI service for HMI Code Generator Figma plugin.
+Local AI service for the Figma HMI plugin (UI2Code^N or rule-based stand-in).
 Wraps the UI2Code^N model into HTTP endpoints.
 """
 
@@ -17,7 +17,7 @@ from renderer import render_html_to_png
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="HMI Code Generator Service", version="0.1.0")
+app = FastAPI(title="Figma HMI Plugin — local service", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,18 +30,35 @@ model = None
 
 
 def get_model():
-    """Lazy-load the UI2Code^N model on first request."""
+    """Lazy-load the active model on first request.
+
+    If USE_REAL_MODEL=1 is set and model weights are available, load the real
+    UI2Code^N via :class:`model_wrapper.UI2CodeModel`. Otherwise fall back to
+    the deterministic stand-in :class:`rule_based_model.RuleBasedModel`, which
+    is fast enough for local development and still produces renderable HMI
+    pages end to end.
+    """
+    import os
+
     global model
     if model is None:
-        logger.info("Loading UI2Code^N model (this may take ~45 seconds)...")
+        if os.environ.get("USE_REAL_MODEL") == "1":
+            try:
+                from model_wrapper import UI2CodeModel
+
+                logger.info("Loading real UI2Code^N (first call can take a while)...")
+                model = UI2CodeModel()
+                logger.info("UI2Code^N loaded.")
+                return model
+            except Exception as exc:
+                logger.warning("Failed to load UI2Code^N (%s); falling back.", exc)
         try:
-            from model_wrapper import UI2CodeModel
-            model = UI2CodeModel()
-            logger.info("Model loaded successfully.")
-        except ImportError:
-            logger.warning(
-                "model_wrapper not found. Using stub model for development."
-            )
+            from rule_based_model import RuleBasedModel
+
+            logger.info("Loading rule-based stand-in model.")
+            model = RuleBasedModel()
+        except Exception:
+            logger.warning("No stand-in model available; using minimal stub.")
             model = StubModel()
     return model
 

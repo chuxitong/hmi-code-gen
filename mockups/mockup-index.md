@@ -1,45 +1,32 @@
-# Industrial HMI Mockup Set
+# Набор промышленных мокапов
 
-**Figma file:** [Industrial HMI Mockups](https://www.figma.com/design/pfFNMVzjfLbeCo6r2ieFl3)
+Figma-файл с исходными макетами: `https://www.figma.com/design/pfFNMVzjfLbeCo6r2ieFl3`. Все PNG-экспорты лежат рядом в `mockups/png/` с номерами от `01` до `08`. Ниже короткое пояснение к каждому экрану и к тому, откуда он взялся.
 
-## Sources
+## Откуда брал базовые layout-ы и стилистику
 
-### Editable Figma Templates Used as Base Layouts
+Для каркаса сеток и карточек опирался на два общедоступных набора. Themesberg Admin Dashboard Template даёт аккуратные таблицы и карточные компоновки, Sneat Free Figma UI Kit — модульные элементы и тёмную тему. В чистом виде они выглядят как админка для SaaS, поэтому поверх я натягивал промышленный стиль: тёмный фон, контрастные индикаторы состояний, моноширинные числа, компактные отступы.
 
-1. **Themesberg Figma Admin Dashboard Template** — grid-based dashboard with cards and charts
-2. **Sneat Free Figma Admin Dashboard UI Kit** — modular components and dark theme variant
+За промышленной стилистикой смотрел на Siemens HMI Template Suite (типовые операторские панели), публичное демо Ignition SCADA (реалистичный дашборд с живыми виджетами), FUXA (синоптические экраны с датчиками и клапанами, построенные на SVG), JointJS SCADA/HMI Demo (интерактивные схемы трубопроводов и танков). Ни один из них я не копировал дословно — задача была сделать макеты, которые визуально читаются как промышленный HMI, а не как обычный веб-интерфейс.
 
-### Industrial Visual References
+## Состав набора
 
-1. **Siemens HMI Template Suite** — standard industrial operator panel layouts
-2. **Ignition SCADA Public Demo** — real-world SCADA dashboard with live data widgets
-3. **FUXA Open-Source SCADA** — SVG-based synoptic screens with gauges and valves
-4. **JointJS SCADA/HMI Demo** — interactive pipeline and tank level diagrams
+| # | Экран | Файл | Задача | Сложность |
+|---|---|---|---|---|
+| 1 | Equipment Status Dashboard | `mockups/png/01-equipment-status.png` | Отображение рабочего состояния ключевых машин линии (работа, простой, неисправность, обслуживание) | Простой |
+| 2 | Alarm & Event Screen | `mockups/png/02-alarm-event.png` | Список активных аварий с уровнями серьёзности, временными метками и кнопками подтверждения | Простой |
+| 3 | Real-Time Trend Monitor | `mockups/png/03-trend-monitor.png` | Тренды температуры, давления и расхода за настраиваемое окно времени | Средний |
+| 4 | Operator Control Panel | `mockups/png/04-operator-panel.png` | Ручное управление узлом: пуск/стоп/сброс, селектор режимов, уставки, живые показания | Средний |
+| 5 | Production Line Overview | `mockups/png/05-production-overview.png` | Обзор линии розлива: сегменты конвейера, состояния машин, счётчики производительности, OEE | Средний |
+| 6 | Tank Farm Synoptic | `mockups/png/06-tank-synoptic.png` | Схема резервуарного парка с уровнями, клапанами, трубопроводами и насосами | Средний–Сложный |
+| 7 | Energy Monitoring Dashboard | `mockups/png/07-energy-dashboard.png` | Потребление по зонам с круговыми и столбчатыми диаграммами, KPI и сравнением по дням/неделям | Средний–Сложный |
+| 8 | Batch Recipe Management | `mockups/png/08-batch-recipe.png` | Управление рецептом партии: последовательность шагов, таблица параметров, временная ось, управление фазами | Сложный |
 
-## Mockup Set (8 screens)
+## Почему именно такой состав
 
+Два простых экрана нужны, чтобы базовая генерация выглядела осмысленно, а не как набор провалов на сложностях. Четыре средних — это ядро нагрузки: тренды, операторская панель и обзор линии покрывают основные паттерны промышленного HMI (графики, ручное управление, многосекционные сетки), энергодашборд добавляет многокомпонентный агрегированный экран. Синоптика резервуаров и экран рецептов задуманы именно как проверка границ: оба содержат много графических элементов, которые плохо ложатся на модель screenshot-to-code, и это честный индикатор того, где прототип начинает сдавать.
 
-| #   | Screen Name                 | File                                     | Industrial Use Case                                                                                                           | Complexity  | Rationale                                                                                                                                    |
-| --- | --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Equipment Status Dashboard  | `mockups/png/01-equipment-status.png`    | Displays the operational state of key machines on a production line — running, idle, faulted, maintenance                     | Simple      | Covers the most common HMI view: a grid of status cards with color-coded indicators. Good for testing basic card layout generation.          |
-| 2   | Alarm & Event Screen        | `mockups/png/02-alarm-event.png`         | Lists active alarms and recent events with severity levels, timestamps, and acknowledgment buttons                            | Simple      | Tabular layout with colored severity badges. Tests table rendering accuracy, row styling, and action buttons.                                |
-| 3   | Real-Time Trend Monitor     | `mockups/png/03-trend-monitor.png`       | Shows time-series plots for temperature, pressure, and flow rate sensors over a configurable time window                      | Medium      | Contains line chart placeholders, axis labels, legend, and time-range selector. Tests chart area reproduction and legend alignment.          |
-| 4   | Operator Control Panel      | `mockups/png/04-operator-panel.png`      | Manual control interface for a mixing unit — start/stop buttons, setpoint inputs, mode selector, and live readouts            | Medium      | Mix of buttons, numeric inputs, dropdown selectors, and live value displays. Good for testing interactive element generation.                |
-| 5   | Production Line Overview    | `mockups/png/05-production-overview.png` | Bird's-eye view of a bottling line showing conveyor segments, machine states, throughput counters, and OEE metrics            | Medium      | Complex multi-section layout with a horizontal process flow diagram, KPI cards, and a progress bar. Tests spatial arrangement.               |
-| 6   | Tank Farm Synoptic          | `mockups/png/06-tank-synoptic.png`       | Graphic depiction of four storage tanks with level indicators, valves, pipe connections, and pump states                      | Medium–Hard | SVG-style graphic elements (tank shapes, pipe lines, valve symbols). A challenging test for reproducing non-rectangular visual primitives.   |
-| 7   | Energy Monitoring Dashboard | `mockups/png/07-energy-dashboard.png`    | Power consumption breakdown by facility zone with gauge charts, bar charts, and daily/weekly comparison cards                 | Medium–Hard | Dense layout with multiple chart types, KPI summary row, and sub-navigation tabs. Tests multi-chart composition.                             |
-| 8   | Batch Recipe Management     | `mockups/png/08-batch-recipe.png`        | Step-sequence display for a pharmaceutical batch process — recipe steps, parameter table, status timeline, and phase controls | Hard        | Combines a vertical step-list, parameter data table, horizontal timeline, and modal-like detail panel. The most structurally complex screen. |
+## Единые дизайн-соглашения
 
+Все макеты держат одну стилистику, чтобы модель тестировалась в сопоставимых условиях. Фон тёмный (около `#1E1E2E`), потому что так принято в операторских залах ради снижения нагрузки на глаза. Цветовое кодирование идёт по классическим правилам: зелёный — норма и работа, жёлтый — предупреждение, красный — авария, синий — информация, серый — выключено. Текст контрастный и светлый. Для числовых полей по возможности использован моноширинный шрифт, чтобы значения не прыгали от разряда к разряду. Сетка отступов — 8 и 16 пикселей, что соответствует типовой практике ISA-101 по иерархии и плотности информации.
 
-## Design Conventions Applied
-
-All mockups follow common industrial HMI conventions:
-
-- **Dark background** (#1E1E2E or similar) to reduce eye fatigue in control rooms
-- **Color coding:** green = normal/running, yellow = warning, red = alarm/fault, blue = maintenance/info, gray = inactive/off
-- **High contrast text** on dark backgrounds (white or light gray)
-- **Monospace or tabular numerals** for live data values
-- **Consistent card-based layout** with 8px / 16px spacing grid
-- **Status indicators** using filled circles, badges, or colored borders
-- **Minimal decorative elements** — function over aesthetics, following ISA-101 HMI design principles
-
+Декоративных элементов минимум. Это сознательное решение: промышленный HMI — про функцию, а не про эстетику, и тесты прототипа должны жить в той же парадигме.

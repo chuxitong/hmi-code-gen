@@ -1,6 +1,7 @@
-"""
-Generate 8 industrial HMI mockup PNGs using Playwright.
-Run: .venv/Scripts/python.exe mockups/generate_mockups.py
+"""Build the eight industrial HMI mockup PNGs via Playwright.
+
+Run:
+    .venv/Scripts/python.exe mockups/build_mockups.py
 """
 import asyncio, os, sys
 

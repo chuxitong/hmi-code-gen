@@ -1,7 +1,7 @@
 {
-  "name": "hmi-code-gen-figma-plugin",
+  "name": "figma-hmi-plugin",
   "version": "0.1.0",
-  "description": "Figma plugin for generating HMI interface code from graphical mockups",
+  "description": "Figma plugin that turns industrial HMI mockups into HTML/CSS via a local VLM service.",
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch"

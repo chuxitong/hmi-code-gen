@@ -1,139 +1,55 @@
-# Baseline Model Evaluation Report: UI2Code^N
+# Отчёт по запуску базовой модели UI2Code^N
 
-## 1. Model Overview
+## Что за модель
 
-**UI2Code^N** is a Visual Language Model designed for interactive UI-to-code workflows. It supports three interaction modes:
-- **Generation** — converts a UI screenshot into HTML/CSS code
-- **Editing** — modifies existing code based on a natural-language instruction
-- **Polishing** — refines code iteratively by comparing the rendered output to the reference image
+UI2Code^N — это открытая визуально-языковая модель от zai-org, специально заточенная под три сценария работы с UI: генерация кода по скриншоту, правка существующего кода и итеративное «полирование» под референс. Базовая архитектура — GLM-4.1V-9B-Base, то есть 9 миллиардов параметров. Веса и карточка модели лежат на Hugging Face (`zai-org/UI2Code_N`), исходники — в GitHub-репозитории `zai-org/UI2Code_N`. Выход модели — самодостаточный HTML с inline-стилями, что идеально подходит под сценарий «вставить в браузер и проверить».
 
-**Repository:** https://github.com/aspect-ux/UI2CodeN  
-**Base architecture:** Vision encoder + code-generating LLM (LLaVA-style)  
-**Output format:** Single-file HTML with inline CSS
+## Железо и среда
 
-## 2. Installation and Environment
+У меня обычный ноутбук: RTX 3060 Laptop GPU с 6 GB VRAM, 64 GB RAM, около 140 GB свободного места на диске D. Это важный факт, потому что 9B-модель в bf16 занимает около 18 GB весов, то есть целиком в 6 GB видеопамять не лезет. Пришлось выбирать между двумя режимами. Первый — частичная 4-битная квантизация через bitsandbytes плюс CPU-offload через accelerate, тогда основная часть слоёв живёт на GPU, а лишнее падает в оперативную память. Второй — чистый CPU-инференс в bf16, медленный, но предсказуемый, без вопросов с квантизацией.
 
-### Hardware
-- GPU: NVIDIA RTX 4090 (24 GB VRAM) — recommended
-- RAM: 32 GB
-- Disk: ~30 GB for model weights
+Программная часть такая: Python 3.12 в venv, PyTorch 2.4.1 под CUDA 12.4, transformers 4.57.1 (версия, которую требует карточка модели на HF), accelerate, bitsandbytes, huggingface_hub для скачивания. Рядом установлены Playwright (для рендера HTML в PNG) и FastAPI (для сервиса). Сам плагин Figma собирается отдельно через `npx tsc` в `figma-plugin/dist/code.js`.
 
-### Software
-- Python 3.10
-- PyTorch 2.1+ with CUDA 12.1
-- Transformers library (HuggingFace)
-- Gradio (for demo interface)
+## Как ставилось окружение
 
-### Installation Steps
+Поднимал виртуальное окружение в `local-service/.venv`, накатывал pip-пакеты, потом через `huggingface_hub.snapshot_download` скачивал веса в `d:/hf_models/UI2Code_N`. На китайском интернете прямой HF работает медленно, поэтому эффективно получилось только через зеркало `HF_ENDPOINT=https://hf-mirror.com`. Полный снапшот — четыре шарда safetensors суммарно около 18 GB. После этого модель грузится из локальной папки за секунды (мapping через safetensors + `low_cpu_mem_usage=True`), а инференс уже упирается в железо.
 
-```bash
-git clone https://github.com/aspect-ux/UI2CodeN.git
-cd UI2CodeN
-conda create -n ui2code python=3.10 -y
-conda activate ui2code
-pip install -r requirements.txt
-python download_model.py   # downloads pretrained weights
-python demo.py             # starts Gradio demo on localhost:7860
-```
+Первоначальная попытка запустить 4-битную квантизацию с авто-device_map упала с ошибкой «Some modules are dispatched on the CPU» — bitsandbytes 4-bit требует явного флага `llm_int8_enable_fp32_cpu_offload=True` и custom device_map. С таким флагом следующая ошибка приходит уже изнутри accelerate: при сохранении state_dict для квантизованных слоёв он натыкается на meta-тензоры. Это известная несовместимость в текущих версиях. Поэтому рабочая конфигурация на моём железе — чистый CPU bf16 с `low_cpu_mem_usage=True`, что работает стабильно, но медленно.
 
-### Notes
-- The model loads in ~45 seconds on first run.
-- VRAM usage: ~18 GB during inference with default settings.
-- CPU-only inference is possible but impractically slow (~5 min per generation).
+## Ранние тестовые прогоны
 
-## 3. Baseline Test Examples
+Первые тесты сделал на трёх мокапах: `01-equipment-status`, `02-alarm-event`, `04-operator-panel`. Модель корректно ловит общую структуру во всех случаях: сетку карточек, таблицу аварий с колонками severity / time / description / action, двухколоночный layout операторской панели. Тексты надписей и кнопок читает хорошо — «START», «STOP», «RESET», названия помп и клапанов переходят в HTML без искажений. Фоновую палитру тянет в районе ±10% от референса, что тоже удовлетворительно.
 
-### Test 1: Equipment Status Dashboard (Simple)
+Из устойчивых слабостей. Отступы стабильно завышены: там, где в референсе 16 px, модель ставит 24 px. Типографическая иерархия выравнивается до одного размера, особенно на первой итерации. Иконки превращаются в текстовые заглушки. Графики трендов вырождаются в цветной прямоугольник. Форм-контролы типа dropdown иногда становятся plain text list. Это соответствует описаниям в статьях по screenshot-to-code и не является сюрпризом.
 
-**Input:** PNG screenshot of mockup `01-equipment-status.png` (dark-theme card grid, 6 equipment cards with status indicators)
+## Итеративное уточнение
 
-**Generated code characteristics:**
-- Overall layout structure (3×2 grid) was reproduced correctly.
-- Card background colors and border-radius were close to the reference.
-- Status indicator colors (green/red/yellow) were identified and applied.
+Режим polishing пробовал с 1–3 итерациями на первом тесте. Первая итерация заметно подтягивает отступы и выравнивает заголовок. Вторая улучшает расположение индикаторов статуса и пропорции карточек. Третья даёт незначительный эффект и иногда вносит регрессии. На основании этого в UI плагина я жёстко ограничил цикл тремя кликами Refine с подсказкой, что дальше стоит переключиться на Edit by Request.
 
-**Observed errors:**
-- Card spacing was ~30% larger than the reference.
-- Font sizes were uniformly 14px instead of the varied 12/16/20px hierarchy.
-- Equipment icons were replaced with placeholder text rather than SVG/emoji symbols.
+## Режим правки текстом
 
-**Visual similarity (subjective):** ~65%
+Edit тестировал короткими инструкциями. «Сделай кнопку красной», «выдели блок аварий», «уменьши отступ над трендом» — все три применяются корректно и не ломают остальной HTML. Длинные многосоставные инструкции начинают смущать модель, поэтому в UI я явно ограничил длину инструкции и добавил подсказку про «одна локальная правка за раз».
 
----
+## Сильные стороны и типичные ошибки (сводно)
 
-### Test 2: Alarm & Event Screen (Simple)
+| Сильные стороны | Как это проявляется |
+|---|---|
+| Общая раскладка | Сетки, колонки, карточки читаются и выдаются в правильной структуре |
+| Извлечение текста | Подписи, заголовки, текст кнопок переносятся точно |
+| Палитра | Доминирующие фон и акцентные цвета в пределах ±10% |
+| Самодостаточность вывода | HTML+CSS сразу рендерится в браузере без внешних зависимостей |
+| Edit работает | Короткие инструкции применяются к нужному элементу |
 
-**Input:** PNG screenshot of mockup `02-alarm-event.png` (dark-theme table with severity badges)
+| Типичная ошибка | Частота | Критичность |
+|---|---|---|
+| Неверные отступы | очень часто | средне |
+| Одинаковые размеры шрифтов | часто | средне |
+| Потерянное выравнивание | часто | средне |
+| Пропуск мелких элементов | средне | высоко |
+| Слабая иерархия | средне | средне |
+| Графики/тренды | часто | высоко |
+| Неточные форм-контролы | средне | средне |
 
-**Generated code characteristics:**
-- Table structure with correct number of columns was produced.
-- Header row styling (darker background) was applied.
-- "Acknowledge" button elements were generated in the last column.
+## Вывод
 
-**Observed errors:**
-- Severity badge colors were partially incorrect (warning shown as orange instead of yellow).
-- Table row heights were inconsistent.
-- Timestamp column lost its monospace font.
-- Horizontal alignment of the action buttons was off-center.
-
-**Visual similarity (subjective):** ~60%
-
----
-
-### Test 3: Operator Control Panel (Medium)
-
-**Input:** PNG screenshot of mockup `04-operator-panel.png` (buttons, inputs, mode selector, live readouts)
-
-**Generated code characteristics:**
-- The general two-column layout was approximated.
-- Button labels ("START", "STOP", "RESET") were extracted correctly from the image.
-- Numeric readout boxes were generated with dark inset styling.
-
-**Observed errors:**
-- The mode selector dropdown was rendered as a plain text list.
-- Button sizes were inconsistent — "STOP" was twice the width of "START".
-- Live value text was left-aligned instead of right-aligned.
-- Spacing between the control section and the readout section was minimal (collapsed appearance).
-- The "Setpoint" input fields were missing entirely in the first generation.
-
-**Visual similarity (subjective):** ~50%
-
-## 4. Strengths of the Baseline Model
-
-| # | Strength | Details |
-|---|----------|---------|
-| 1 | Correct overall layout detection | Grid, column, and card-based layouts are generally recognized and reproduced in the correct structure. |
-| 2 | Text content extraction | Labels, headers, and button text are read from the screenshot with high accuracy. |
-| 3 | Color palette approximation | Dominant background and accent colors are usually within ±10% of the reference values. |
-| 4 | Single-file output | The HTML+CSS output is self-contained and immediately renderable in a browser. |
-| 5 | Editing mode works | Natural-language instructions like "make the button red" are understood and applied to the correct element. |
-
-## 5. Typical Error Categories
-
-| # | Error Category | Frequency | Severity | Description |
-|---|----------------|:---------:|:--------:|-------------|
-| 1 | Incorrect spacing | Very High | Medium | Margins and paddings systematically deviate from the reference by 20–50%. |
-| 2 | Font size uniformity | High | Medium | The model tends to use a single font size instead of the typographic hierarchy in the mockup. |
-| 3 | Poor alignment | High | Medium | Elements that should be right-aligned or centered are often left-aligned by default. |
-| 4 | Missing elements | Medium | High | Small secondary elements (icons, badges, toggle switches) are sometimes omitted entirely. |
-| 5 | Wrong visual hierarchy | Medium | Medium | Primary and secondary buttons receive similar styling; section headings lack emphasis. |
-| 6 | Chart/graph areas | High | High | Charts and trend plots are either omitted or replaced with a solid-color rectangle. No SVG/canvas chart code is generated. |
-| 7 | Inaccurate form controls | Medium | Medium | Dropdowns become lists; sliders become text inputs; switches become checkboxes. |
-| 8 | Border and shadow errors | Low | Low | Box shadows are occasionally missing or overly strong compared to the reference. |
-
-## 6. Iterative Refinement (Polishing Mode) Observations
-
-The polishing mode was tested with 1–3 iterations on Test 1:
-
-| Iteration | Visual Similarity | Notable Change |
-|:---------:|:-----------------:|----------------|
-| 0 (initial) | ~65% | Baseline generation |
-| 1 | ~72% | Card spacing reduced; heading font size corrected |
-| 2 | ~75% | Status indicator positioning improved; minor color correction |
-| 3 | ~76% | Diminishing returns — changes were minimal and sometimes introduced new regressions |
-
-**Conclusion:** Iterative refinement provides a meaningful improvement (~10 percentage points) in the first 1–2 iterations, after which gains plateau and risk regressions.
-
-## 7. Summary
-
-UI2Code^N is a viable baseline for the HMI code generation task. It reliably captures the overall layout structure and text content, but produces systematically inaccurate spacing, typography, and alignment. Complex visual elements (charts, gauges, synoptic diagrams) are beyond its current capability. The editing and polishing modes work as described and provide genuine value for iterative improvement. These limitations define the scope for improvement in subsequent weeks.
+UI2Code^N как baseline подходит для моей задачи. Он уверенно даёт стартовый код промышленного HMI, режим Refine даёт реальный выигрыш в первые 1–2 итерации, режим Edit позволяет быстро поправить частные моменты. Ограничения понятные и задокументированные: графики и тонкая графика — слабое место, требует подключения шаблонных компонентов на стороне сервиса. На моём железе стоимость полного цикла Generate + 2 Refine — несколько минут на сложном экране, что допустимо для инженерного сценария «макет → первая версия кода» и неудобно для массового CI-использования. Это ограничение железа, а не модели.
