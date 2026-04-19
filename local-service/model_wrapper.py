@@ -2,9 +2,19 @@
 Wrapper around the real UI2Code^N visual language model.
 
 The model ID is ``zai-org/UI2Code_N``. It is a 9B-parameter VLM built on
-GLM-4.1V-9B-Base. On a consumer laptop GPU (RTX 3060 Laptop, 6 GB VRAM)
-the model does not fit in bf16, so we load it with 4-bit quantisation and
-let accelerate offload the rest to CPU/RAM automatically.
+GLM-4.1V-9B-Base.
+
+Loading mode is controlled by the ``UI2CODEN_QUANT`` environment variable:
+
+* ``none`` (default) — load full-precision bf16 weights, recommended for
+  real measurements on a workstation GPU (e.g. RTX 4090, 24 GB VRAM).
+* ``8bit`` — load with 8-bit weights via ``bitsandbytes`` (mid-range GPUs).
+* ``4bit`` — load with 4-bit NF4 weights and CPU/RAM offload, used only on
+  laptops with very limited VRAM (e.g. RTX 3060 Laptop, 6 GB).
+
+Quantisation is therefore opt-in. By default the wrapper does **not**
+quantise the model, because all reported timings and qualitative results
+in the thesis must be obtained from the unquantised model.
 
 The class follows the same ``generate / refine / edit`` interface that the
 rule-based stand-in exposes, so it can be dropped into the local HTTP
@@ -14,9 +24,10 @@ service and evaluation scripts without changing anything else.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 import torch
 from PIL import Image
@@ -25,6 +36,7 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_ID = os.environ.get("UI2CODEN_MODEL_ID", "zai-org/UI2Code_N")
+DEFAULT_QUANT = os.environ.get("UI2CODEN_QUANT", "none").lower()
 
 
 _GEN_PROMPT = (
@@ -35,10 +47,13 @@ _GEN_PROMPT = (
 )
 
 _REFINE_PROMPT = (
-    "This is an industrial HMI reference. The attached HTML is a previous "
-    "attempt. Improve the HTML so that its rendered appearance is closer to "
-    "the reference: tighten spacing, correct typography hierarchy, align "
-    "blocks, preserve the color palette. Return the full updated HTML."
+    "This is an industrial HMI reference. The first image is the target "
+    "reference. The second image is the current rendered output of the "
+    "attached HTML. Improve the HTML so that its rendered appearance is "
+    "closer to the reference: tighten spacing, correct typography "
+    "hierarchy, align blocks, preserve the color palette, fix obviously "
+    "missing elements visible in the reference but absent from the current "
+    "render. Return the full updated HTML."
 )
 
 _EDIT_PROMPT_TEMPLATE = (
@@ -52,41 +67,91 @@ def _pil_from_bytes(image_bytes: bytes) -> Image.Image:
     return Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
 
+def _format_context_block(
+    css_hints: Optional[dict] = None,
+    variables: Optional[dict] = None,
+) -> str:
+    """Render optional Figma context as a compact, model-readable block.
+
+    The block is appended to the prompt only when at least one of the two
+    inputs is provided. Empty dicts are treated as "not provided".
+    """
+    parts: list[str] = []
+    if variables:
+        parts.append(
+            "<design_variables>\n"
+            + json.dumps(variables, ensure_ascii=False, indent=2)
+            + "\n</design_variables>"
+        )
+    if css_hints:
+        parts.append(
+            "<css_hints>\n"
+            + json.dumps(css_hints, ensure_ascii=False, indent=2)
+            + "\n</css_hints>"
+        )
+    return ("\n\n" + "\n\n".join(parts)) if parts else ""
+
+
 class UI2CodeModel:
     """Thin wrapper that exposes ``generate``, ``refine`` and ``edit``."""
 
-    name = "ui2coden-9b-4bit"
-
-    def __init__(self, model_id: str = DEFAULT_MODEL_ID, max_new_tokens: int = 4096):
+    def __init__(
+        self,
+        model_id: str = DEFAULT_MODEL_ID,
+        max_new_tokens: int = 4096,
+        quant: str = DEFAULT_QUANT,
+    ):
         self.model_id = model_id
         self.max_new_tokens = max_new_tokens
-        logger.info("loading %s (this may take several minutes on first run)", model_id)
-
-        from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
-
-        quant = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
+        self.quant = (quant or "none").lower()
+        self.name = f"ui2coden-9b-{self.quant}"
+        logger.info(
+            "loading %s in quant=%s (this may take several minutes on first run)",
+            model_id,
+            self.quant,
         )
+
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+
+        kwargs: dict[str, Any] = {
+            "torch_dtype": torch.bfloat16,
+            "trust_remote_code": True,
+        }
+
+        if self.quant == "none":
+            if torch.cuda.is_available():
+                kwargs["device_map"] = "cuda"
+            else:
+                kwargs["device_map"] = "auto"
+        elif self.quant in {"4bit", "8bit"}:
+            from transformers import BitsAndBytesConfig
+
+            if self.quant == "4bit":
+                kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                )
+            else:
+                kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+            kwargs["device_map"] = "auto"
+        else:
+            raise ValueError(
+                f"Unsupported UI2CODEN_QUANT={self.quant!r}; expected one of "
+                "'none', '8bit', '4bit'."
+            )
 
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-        self.model = AutoModelForImageTextToText.from_pretrained(
-            model_id,
-            quantization_config=quant,
-            device_map="auto",
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-        )
+        self.model = AutoModelForImageTextToText.from_pretrained(model_id, **kwargs)
         self.model.eval()
-        logger.info("model loaded: %s", model_id)
+        logger.info("model loaded: %s (%s)", model_id, self.name)
 
     # ------------------------------------------------------------------ core
 
-    def _chat(self, image: Image.Image | None, text: str) -> str:
+    def _chat(self, images: list[Image.Image], text: str) -> str:
         content: list[dict[str, Any]] = []
-        if image is not None:
+        for image in images:
             content.append({"type": "image", "image": image})
         content.append({"type": "text", "text": text})
 
@@ -114,20 +179,57 @@ class UI2CodeModel:
 
     # ------------------------------------------------------------------ api
 
-    def generate(self, image_bytes: bytes, frame_name: str = "Untitled", **_: Any) -> str:
+    def generate(
+        self,
+        image_bytes: bytes,
+        frame_name: str = "Untitled",
+        css_hints: Optional[dict] = None,
+        variables: Optional[dict] = None,
+        **_: Any,
+    ) -> str:
         image = _pil_from_bytes(image_bytes)
         prompt = _GEN_PROMPT + f"\nScreen name hint: {frame_name}"
-        return self._chat(image, prompt)
+        prompt += _format_context_block(css_hints=css_hints, variables=variables)
+        return self._chat([image], prompt)
 
-    def refine(self, reference_bytes: bytes, current_code: str, **_: Any) -> str:
-        image = _pil_from_bytes(reference_bytes)
-        prompt = _REFINE_PROMPT + "\n\n<previous_html>\n" + current_code + "\n</previous_html>"
-        return self._chat(image, prompt)
+    def refine(
+        self,
+        reference_bytes: bytes,
+        current_code: str,
+        rendered_bytes: Optional[bytes] = None,
+        css_hints: Optional[dict] = None,
+        variables: Optional[dict] = None,
+        **_: Any,
+    ) -> str:
+        images: list[Image.Image] = [_pil_from_bytes(reference_bytes)]
+        if rendered_bytes:
+            images.append(_pil_from_bytes(rendered_bytes))
+            preface = (
+                "\n\nFirst image: target reference. "
+                "Second image: current render of the attached HTML."
+            )
+        else:
+            preface = (
+                "\n\nOnly the reference image was supplied. "
+                "Improve the HTML to match it as closely as possible."
+            )
+        prompt = _REFINE_PROMPT + preface
+        prompt += _format_context_block(css_hints=css_hints, variables=variables)
+        prompt += "\n\n<previous_html>\n" + current_code + "\n</previous_html>"
+        return self._chat(images, prompt)
 
-    def edit(self, current_code: str, instruction: str, **_: Any) -> str:
+    def edit(
+        self,
+        current_code: str,
+        instruction: str,
+        css_hints: Optional[dict] = None,
+        variables: Optional[dict] = None,
+        **_: Any,
+    ) -> str:
         prompt = _EDIT_PROMPT_TEMPLATE.format(instruction=instruction)
+        prompt += _format_context_block(css_hints=css_hints, variables=variables)
         prompt += "\n\n<current_html>\n" + current_code + "\n</current_html>"
-        return self._chat(None, prompt)
+        return self._chat([], prompt)
 
     # ------------------------------------------------------------------ util
 

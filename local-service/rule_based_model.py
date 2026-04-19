@@ -300,12 +300,25 @@ class RuleBasedModel:
         time.sleep(0.05)
         return _pick_screen(frame_name)
 
-    def refine(self, reference_bytes: bytes, current_code: str, **kwargs: Any) -> str:
+    def refine(
+        self,
+        reference_bytes: bytes,
+        current_code: str,
+        rendered_bytes: Optional[bytes] = None,
+        **kwargs: Any,
+    ) -> str:
         """Apply real deterministic improvements to the code.
 
         - Tighten spacing and padding;
         - Ensure the visual hierarchy (h1/h2) is preserved;
         - Strengthen panel contrast.
+
+        ``rendered_bytes`` is accepted for interface parity with the real
+        UI2Code^N wrapper (which feeds the current rendered screenshot to
+        the model). The rule-based replacement does not need the image to
+        produce deterministic textual edits, but acknowledging the argument
+        keeps the contract identical and lets the same client code drive
+        both backends without conditionals.
         """
         time.sleep(0.05)
         code = current_code
@@ -315,7 +328,14 @@ class RuleBasedModel:
         code = re.sub(r"--border: #44445a;", "--border: #4d4d66;", code)
         return code
 
-    def edit(self, current_code: str, instruction: str, **kwargs: Any) -> str:
+    def edit(
+        self,
+        current_code: str,
+        instruction: str,
+        css_hints: Optional[dict] = None,
+        variables: Optional[dict] = None,
+        **kwargs: Any,
+    ) -> str:
         """Apply the instruction via simple, inspectable rules."""
         time.sleep(0.05)
         low = instruction.lower()
@@ -343,5 +363,13 @@ class RuleBasedModel:
             )
         if ("dark" in low or "contrast" in low) and ("stronger" in low or "higher" in low or "increase" in low):
             code = code.replace("--bg: #1e1e2e;", "--bg: #141421;")
+
+        if variables:
+            bg = variables.get("--bg") or variables.get("--color-bg")
+            if isinstance(bg, str) and bg.startswith("#"):
+                code = re.sub(r"--bg:\s*#[0-9a-fA-F]+;", f"--bg: {bg};", code)
+            accent = variables.get("--accent") or variables.get("--color-accent")
+            if isinstance(accent, str) and accent.startswith("#"):
+                code = re.sub(r"--accent:\s*#[0-9a-fA-F]+;", f"--accent: {accent};", code)
 
         return code

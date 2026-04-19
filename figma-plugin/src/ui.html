@@ -29,6 +29,7 @@
   .preview-area img { max-width: 100%; }
   .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .toggle-row input { accent-color: #0d99ff; }
+  .ctx-note { color: #888; font-size: 10px; margin: -2px 0 8px 0; }
   #log { font-family: monospace; font-size: 10px; color: #aaa; white-space: pre-wrap;
          max-height: 80px; overflow-y: auto; background: #1a1a1a; padding: 6px; border-radius: 4px; }
 </style>
@@ -42,6 +43,10 @@
   </div>
   <div class="toggle-row">
     <input type="checkbox" id="chkCss" /> <label for="chkCss">Include CSS hints</label>
+  </div>
+  <div class="ctx-note">
+    Both context channels apply to Generate, Refine and Edit. The model receives
+    them only while a checkbox is on at the moment of the call.
   </div>
   <button id="btnGenerate">Generate Code</button>
   <button id="btnRefine" class="secondary">Make It Closer to the Mockup</button>
@@ -73,11 +78,50 @@
 const SERVICE_URL = "http://localhost:8000";
 let currentCode = "";
 let referenceImageBase64 = "";
+let referenceWidth = 1280;
+let referenceHeight = 720;
 
 function log(text) {
   const el = document.getElementById("log");
   el.textContent += text + "\n";
   el.scrollTop = el.scrollHeight;
+}
+
+function ctxFlags() {
+  return {
+    includeVariables: document.getElementById("chkVars").checked,
+    includeCssHints: document.getElementById("chkCss").checked,
+  };
+}
+
+const _ctxResolvers = new Map();
+function requestContext() {
+  // Asks the sandbox for variables / css hints based on current checkboxes.
+  // Returns { cssHints, variables }. If the user disabled both checkboxes,
+  // we still call and get empty objects, which is what the model should see.
+  return new Promise((resolve) => {
+    const requestId = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+    _ctxResolvers.set(requestId, resolve);
+    parent.postMessage(
+      { pluginMessage: { type: "request-context", payload: { ...ctxFlags(), requestId } } },
+      "*"
+    );
+  });
+}
+
+async function renderCurrentCode() {
+  // Asks the local service to render currentCode → PNG (base64).
+  const resp = await fetch(SERVICE_URL + "/render", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      html_code: currentCode,
+      width: referenceWidth,
+      height: referenceHeight,
+    }),
+  });
+  const result = await resp.json();
+  return result.image_base64 || "";
 }
 
 window.onmessage = async (event) => {
@@ -92,9 +136,16 @@ window.onmessage = async (event) => {
     log("ERROR: " + msg.message);
   }
 
+  if (msg.type === "context-ready") {
+    const r = _ctxResolvers.get(msg.requestId);
+    if (r) { _ctxResolvers.delete(msg.requestId); r(msg.data || {}); }
+  }
+
   if (msg.type === "frame-exported") {
     const d = msg.data;
     referenceImageBase64 = d.imageBase64;
+    referenceWidth = d.width;
+    referenceHeight = d.height;
     log(`Frame "${d.frameName}" exported (${d.width}×${d.height}).`);
     log("Sending to local service for code generation...");
 
@@ -126,9 +177,10 @@ window.onmessage = async (event) => {
 };
 
 document.getElementById("btnGenerate").onclick = () => {
-  const includeVariables = document.getElementById("chkVars").checked;
-  const includeCssHints = document.getElementById("chkCss").checked;
-  parent.postMessage({ pluginMessage: { type: "export-frame", payload: { includeVariables, includeCssHints } } }, "*");
+  parent.postMessage(
+    { pluginMessage: { type: "export-frame", payload: ctxFlags() } },
+    "*"
+  );
 };
 
 document.getElementById("btnRefine").onclick = async () => {
@@ -136,14 +188,28 @@ document.getElementById("btnRefine").onclick = async () => {
     log("Generate code first before refining.");
     return;
   }
-  log("Requesting refinement...");
+  log("Refine: rendering current code...");
+  let renderedB64 = "";
+  try {
+    renderedB64 = await renderCurrentCode();
+  } catch (err) {
+    log("Render error (continuing without rendered image): " + err.message);
+  }
+  log("Refine: collecting context...");
+  const ctx = await requestContext();
+  log("Refine: requesting model...");
   try {
     const resp = await fetch(SERVICE_URL + "/refine", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         reference_image_base64: referenceImageBase64,
+        rendered_image_base64: renderedB64,
         current_code: currentCode,
+        width: referenceWidth,
+        height: referenceHeight,
+        css_hints: ctx.cssHints || {},
+        variables: ctx.variables || {},
       }),
     });
     const result = await resp.json();
@@ -163,12 +229,21 @@ document.getElementById("btnEdit").onclick = async () => {
   const instruction = document.getElementById("editInstruction").value.trim();
   if (!instruction) { log("Enter an edit instruction."); return; }
   if (!currentCode) { log("Generate code first."); return; }
-  log("Applying edit: " + instruction);
+  log("Edit: collecting context...");
+  const ctx = await requestContext();
+  log("Edit: applying \"" + instruction + "\"");
   try {
     const resp = await fetch(SERVICE_URL + "/edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ current_code: currentCode, instruction }),
+      body: JSON.stringify({
+        current_code: currentCode,
+        instruction,
+        width: referenceWidth,
+        height: referenceHeight,
+        css_hints: ctx.cssHints || {},
+        variables: ctx.variables || {},
+      }),
     });
     const result = await resp.json();
     currentCode = result.code || currentCode;

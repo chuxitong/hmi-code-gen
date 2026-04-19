@@ -1,6 +1,6 @@
 # Набор промышленных мокапов
 
-Figma-файл с исходными макетами: `https://www.figma.com/design/pfFNMVzjfLbeCo6r2ieFl3`. Все PNG-экспорты лежат рядом в `mockups/png/` с номерами от `01` до `08`. Ниже короткое пояснение к каждому экрану и к тому, откуда он взялся.
+Файлы и ссылки. Векторные источники компонентной библиотеки лежат в `mockups/layered-svg/symbols/` (по одному SVG на компонент, в каждом — четыре варианта `state=normal | warning | alarm | closed` со слоями `body / outline / state-fill / state-badge / state-shape / indicator / connector-* / label`). Векторные источники двух эталонных экранов — в `mockups/layered-svg/screens/` (`production-overview.svg`, `alarm-events.svg`). Растровые экспорты восьми макетов лежат в `mockups/png/` с номерами `01`–`08` и используются только как вход для модели и как иллюстрации отчётов. Файл многослойных макетов в Figma (облако): `https://www.figma.com/design/HrkgKx1ITbIIlwsqDJ2Esv/Industrial-HMI-Mockups?node-id=0-1` (SVG-символы и экраны собираются в Figma Desktop; подробности — в `thesis/mockups-layered-plan.md`).
 
 ## Откуда брал базовые layout-ы и стилистику
 

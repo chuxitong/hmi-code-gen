@@ -108,6 +108,7 @@ class GenerateRequest(BaseModel):
 class RefineRequest(BaseModel):
     reference_image_base64: str
     current_code: str
+    rendered_image_base64: Optional[str] = None
     width: int = 1280
     height: int = 720
     css_hints: Optional[dict] = None
@@ -119,6 +120,8 @@ class EditRequest(BaseModel):
     instruction: str
     width: int = 1280
     height: int = 720
+    css_hints: Optional[dict] = None
+    variables: Optional[dict] = None
 
 
 class RenderRequest(BaseModel):
@@ -171,13 +174,32 @@ async def generate(req: GenerateRequest):
 
 @app.post("/refine", response_model=CodeResponse)
 async def refine(req: RefineRequest):
-    """Refine code to better match the reference mockup."""
+    """Refine code to better match the reference mockup.
+
+    The model receives THREE inputs, in line with the UI-polishing protocol:
+    the reference screenshot, the current rendered screenshot of the latest
+    HTML, and the current HTML itself. If the caller did not pre-render, we
+    render here on the server so the model always gets the rendered image.
+    """
     ref_bytes = base64.b64decode(req.reference_image_base64)
+
+    if req.rendered_image_base64:
+        rendered_bytes = base64.b64decode(req.rendered_image_base64)
+    else:
+        try:
+            rendered_bytes = await render_html_to_png(
+                req.current_code, req.width, req.height
+            )
+        except Exception as e:
+            logger.warning(f"Server-side rendering for refine failed: {e}")
+            rendered_bytes = b""
+
     m = get_model()
 
     code = m.refine(
         ref_bytes,
         req.current_code,
+        rendered_bytes=rendered_bytes,
         css_hints=req.css_hints,
         variables=req.variables,
     )
@@ -198,9 +220,20 @@ async def refine(req: RefineRequest):
 
 @app.post("/edit", response_model=CodeResponse)
 async def edit(req: EditRequest):
-    """Edit existing code according to a natural-language instruction."""
+    """Edit existing code according to a natural-language instruction.
+
+    The optional context (Figma design variables and CSS hints) is forwarded
+    to the model so that local edits can take design-system tokens into
+    account. The user controls whether this context is sent via the two
+    checkboxes in the plugin UI.
+    """
     m = get_model()
-    code = m.edit(req.current_code, req.instruction)
+    code = m.edit(
+        req.current_code,
+        req.instruction,
+        css_hints=req.css_hints,
+        variables=req.variables,
+    )
 
     preview_b64 = None
     try:
